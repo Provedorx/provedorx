@@ -328,6 +328,18 @@ WHERE id = 1;
 
 ---
 
+## Build de validação (sem publicar)
+
+Antes de criar a tag, rode o workflow manualmente:
+
+```text
+Actions → Release ProvedorX → Run workflow
+```
+
+Informe uma versão de teste (ex.: `0.2.1`). Ele compila Linux x86_64 e macOS,
+mas **não publica release** e **não roda testes nem banco de dados**. A tag
+`vX.Y.Z` continua sendo o gatilho da publicação real.
+
 ## Atualização pela interface
 
 ```text

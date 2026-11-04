@@ -52,6 +52,37 @@ bin/provedorx-bot
 version.json
 ```
 
+## Instalação completa (bundle)
+
+O bundle inclui os binários e o diretório `deploy/` com exemplos de env, SQL de
+inicialização e o `bootstrap.sh`. Nenhum `.env` com segredos é distribuído.
+
+```bash
+curl -fL -o provedorx-bundle.tar.gz \
+  https://github.com/Provedorx/provedorx/releases/latest/download/provedorx-bundle-linux-x86_64.tar.gz
+curl -fL -o provedorx-bundle.tar.gz.sha256 \
+  https://github.com/Provedorx/provedorx/releases/latest/download/provedorx-bundle-linux-x86_64.tar.gz.sha256
+
+sha256sum -c provedorx-bundle.tar.gz.sha256
+mkdir -p /opt/provedorx-release
+tar -xzf provedorx-bundle.tar.gz -C /opt/provedorx-release
+cd /opt/provedorx-release
+
+# Debian/systemd: instala MariaDB, Vault, MinIO, NATS, gera envs e o admin
+sudo ./deploy/bootstrap.sh --mode systemd
+
+# ou Docker Compose
+./deploy/bootstrap.sh --mode docker
+```
+
+O bootstrap gera automaticamente:
+
+- senha do banco e do usuário da aplicação;
+- JWT/encryption keys e tokens do bot;
+- 2 chaves de unseal do Vault + root token;
+- credenciais do MinIO;
+- usuário admin inicial (a senha é exibida no final).
+
 ## Atualização recomendada
 
 Use a própria interface do ProvedorX:

@@ -36,6 +36,7 @@ deploy/env/*.env.example
 deploy/sql/01-schema.sql
 deploy/sql/02-seed.sql
 deploy/sql/03-bootstrap.sql.tpl
+deploy/radius/templates/
 deploy/systemd/
 deploy/docker-compose.release.yml
 deploy/docker/Dockerfile.runtime
@@ -68,18 +69,21 @@ sudo ./deploy/bootstrap.sh --mode systemd
 
 O bootstrap:
 
-1. instala MariaDB, Vault, MinIO, NATS e dependências;
+1. instala MariaDB, Vault, MinIO, NATS, FreeRADIUS e dependências;
 2. gera senha do banco, JWT, encryption keys, tokens do bot, credenciais do
    MinIO e senha do admin;
 3. cria banco/usuário, aplica schema + seed + settings/gateways/admin;
 4. inicializa o Vault com **2 chaves de unseal** (`/etc/provedorx/vault-keys.json`);
 5. grava o segredo do MinIO no Vault;
-6. gera `/etc/provedorx/{common,api,worker,bot}.env`;
-7. instala units systemd, polkit e certificado TLS self-signed;
-8. inicia API, bot, workers e NATS.
+6. configura o FreeRADIUS com as templates de produção e gera usuário/senha
+   exclusivos do Radius e o segredo dos NAS;
+7. gera `/etc/provedorx/{common,api,worker,bot}.env`;
+8. instala units systemd, polkit e certificado TLS self-signed;
+9. inicia API, bot, workers, NATS e FreeRADIUS.
 
-No final ele mostra o e-mail e a senha do admin e o caminho das chaves do
-Vault. **Guarde esses dados.**
+No final ele mostra o e-mail/senha do admin, o caminho das chaves do Vault e
+as credenciais do Radius (usuário/senha do banco e segredo dos NAS). **Guarde
+esses dados.**
 
 ### Frontend (systemd)
 
@@ -175,6 +179,11 @@ sudo systemctl start 'provedorx-worker@*'
 
 8. Confira `curl -s http://127.0.0.1:8001/health`.
 
+Para (re)configurar o FreeRADIUS em uma instalação existente, rode novamente o
+bootstrap com `--with-radius`; ele reaproveita os segredos, detecta o schema
+existente e só regrava as configurações do Radius. Se o banco for externo,
+use `--skip-db` e garanta o usuário do Radius no MariaDB.
+
 ---
 
 ## Já tenho instalação — containers no Proxmox/Docker
@@ -254,6 +263,10 @@ O front continua no container dele; substitua os arquivos pelo release novo
 (ver README do frontend). Se quiser que a API sirva o front, monte o diretório
 compartilhado em `/opt/frontend`.
 
+O Radius pode continuar na máquina/container atual. O release inclui as
+templates em `deploy/radius/templates`; ajuste host/banco/usuário/senha e o
+segredo dos NAS conforme os valores gerados pelo bootstrap.
+
 O compose externo sobe NATS, API, bot e um container por worker (events,
 billing, status, backups, maintenance, notifications, network, fiscal). Ele
 força `API_BACKGROUND_WORKERS=none` para os loops não rodarem duplicados na
@@ -327,7 +340,7 @@ sudo systemctl restart provedorx-api
 ## Requisitos
 
 - Linux x86_64/arm64 com systemd, ou Docker Compose
-- MariaDB/MySQL
+- MariaDB/MySQL (com as tabelas `rad*` e `nas`)
 - NATS
 - Vault (segredos)
 - MinIO (arquivos/backups)

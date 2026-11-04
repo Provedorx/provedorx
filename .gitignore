@@ -1,0 +1,7 @@
+# Artefatos gerados localmente não entram neste repositório.
+*.tar.gz
+*.zip
+*.sha256
+dist/
+release/
+.DS_Store

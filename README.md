@@ -267,6 +267,27 @@ O Radius pode continuar na máquina/container atual. O release inclui as
 templates em `deploy/radius/templates`; ajuste host/banco/usuário/senha e o
 segredo dos NAS conforme os valores gerados pelo bootstrap.
 
+Se o Radius estiver em outra máquina (ex.: `10.60.1.134`), crie o usuário no
+MariaDB liberando o IP dele:
+
+```sql
+CREATE USER 'radius'@'10.60.1.134' IDENTIFIED BY '<senha gerada>';
+GRANT SELECT, INSERT, UPDATE, DELETE ON isp.* TO 'radius'@'10.60.1.134';
+FLUSH PRIVILEGES;
+```
+
+Depois rode no host do Radius:
+
+```bash
+sudo ./deploy/bootstrap.sh --radius-only \
+  --db-host 10.60.1.133 --db-name isp \
+  --radius-db-user radius --radius-db-password '<senha>' \
+  --radius-net 10.60.1.0/24
+```
+
+Ele instala apenas o FreeRADIUS e grava a configuração; não instala API, banco,
+Vault, MinIO ou NATS.
+
 O compose externo sobe NATS, API, bot e um container por worker (events,
 billing, status, backups, maintenance, notifications, network, fiscal). Ele
 força `API_BACKGROUND_WORKERS=none` para os loops não rodarem duplicados na

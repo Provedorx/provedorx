@@ -11,6 +11,18 @@ O ProvedorX é um sistema de gestão para provedores de internet (ISP), com
 cobrança, Pix, boleto, notas fiscais, gestão de contratos, rede/ONU, bot de
 WhatsApp, observabilidade e atualização integrada.
 
+## Recursos
+
+- Clientes, contratos, contatos por contrato e histórico
+- Cobrança com Pix, boleto, cartão e agrupamento de faturas
+- Gateways de pagamento (EFI e outros) com webhooks e conciliação
+- Emissão fiscal (NF-e/NFS-e), impostos e reforma tributária (IBS/CBS)
+- Gestão de rede: NAS, OLTs, ONUs, CTOs, VLANs, fibra e topologia
+- Estoque, equipamentos, racks e alocações
+- Bot de WhatsApp para cobrança, avisos e atendimento
+- Observabilidade: filas, gateways, certificados, DLQ e métricas
+- Atualização e rollback integrados via releases do GitHub
+
 ## Componentes
 
 | Binário | Função |

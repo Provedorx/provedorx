@@ -224,7 +224,7 @@ Edite `deploy/env/common.env` com os valores atuais:
 DATABASE_URL=mysql://usuario:senha@10.60.1.133:3306/isp?charset=utf8mb4
 VAULT_ADDR=http://10.60.1.132:8200
 VAULT_TOKEN=<token atual do Vault>
-NATS_URL=nats://<host-nats>:4222
+NATS_URL=nats://nats:4222   # NATS incluído no compose externo
 ENCRYPTION_KEY=<mesma chave da instalação atual>
 SECRETES_KEY=<mesma chave da instalação atual>
 ```
@@ -236,6 +236,8 @@ JWT_SECRET=<mesmo segredo da instalação atual>
 FRONTEND_DIR=/opt/frontend
 GITHUB_API_REPO=Provedorx/provedorx
 GITHUB_FRONT_REPO=Provedorx/provedorx-frontend
+# URL pública da API para o /config.js do front; vazio = mesma origem
+FRONTEND_API_URL=
 ```
 
 > **Muito importante:** mantenha os mesmos `JWT_SECRET`, `ENCRYPTION_KEY` e
@@ -252,11 +254,14 @@ O front continua no container dele; substitua os arquivos pelo release novo
 (ver README do frontend). Se quiser que a API sirva o front, monte o diretório
 compartilhado em `/opt/frontend`.
 
-O compose externo sobe API, bot e um container por worker (events, billing,
-status, backups, maintenance, notifications, network, fiscal). Ele força
-`API_BACKGROUND_WORKERS=none` para os loops não rodarem duplicados na API. Se
-quiser manter os loops dentro da API durante a transição, remova os serviços
-`worker-*` e use `API_BACKGROUND_WORKERS=legacy`.
+O compose externo sobe NATS, API, bot e um container por worker (events,
+billing, status, backups, maintenance, notifications, network, fiscal). Ele
+força `API_BACKGROUND_WORKERS=none` para os loops não rodarem duplicados na
+API. Se quiser manter os loops dentro da API durante a transição, remova os
+serviços `worker-*` e use `API_BACKGROUND_WORKERS=legacy`.
+
+Se já tem um NATS externo, defina `NATS_URL=nats://seu-host:4222` no
+`deploy/.env` (variável do Compose) e remova o serviço `nats` do arquivo.
 
 5. **Não** rode `./deploy/bootstrap.sh --mode docker` no mesmo host com
    containers/volumes existentes. Ele cria uma stack e volumes novos; use o

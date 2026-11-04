@@ -1,47 +1,29 @@
 # ProvedorX API — Releases
 
 [![Latest release](https://img.shields.io/github/v/release/Provedorx/provedorx?label=API&sort=semver)](https://github.com/Provedorx/provedorx/releases/latest)
-[![Platform](https://img.shields.io/badge/platform-linux%20x86__64%20%7C%20macOS%20arm64-2f81f7)](#assets)
+[![Platform](https://img.shields.io/badge/platform-linux%20x86__64%20%7C%20macOS-2f81f7)](#assets)
 [![Status](https://img.shields.io/badge/status-produ%C3%A7%C3%A3o-2ea043)](#)
 
-Este repositório publica **apenas os binários de release** do ProvedorX. O
-código-fonte permanece em um repositório privado.
+Este repositório publica **apenas os binários e artefatos de release** do
+ProvedorX. O código-fonte permanece em um repositório privado.
 
 O ProvedorX é um sistema de gestão para provedores de internet (ISP), com
-cobrança, Pix, boleto, notas fiscais, gestão de contratos, rede/ONU, bot de
-WhatsApp, observabilidade e atualização integrada.
-
-## Recursos
-
-- Clientes, contratos, contatos por contrato e histórico
-- Cobrança com Pix, boleto, cartão e agrupamento de faturas
-- Gateways de pagamento (EFI e outros) com webhooks e conciliação
-- Emissão fiscal (NF-e/NFS-e), impostos e reforma tributária (IBS/CBS)
-- Gestão de rede: NAS, OLTs, ONUs, CTOs, VLANs, fibra e topologia
-- Estoque, equipamentos, racks e alocações
-- Bot de WhatsApp para cobrança, avisos e atendimento
-- Observabilidade: filas, gateways, certificados, DLQ e métricas
-- Atualização e rollback integrados via releases do GitHub
-
-## Componentes
-
-| Binário | Função |
-|---|---|
-| `provedorx` | API GraphQL, autenticação, regras de negócio e HTTP |
-| `provedorx-worker` | Workers de background (cobrança, eventos, status, backups, rede, fiscal, notificações) |
-| `provedorx-bot` | Bot de WhatsApp (quando não está embutido na API) |
-
-Os três binários são compilados da mesma tag e devem ser atualizados juntos.
+cobrança, Pix, boleto, notas fiscais, contratos, rede/ONU, bot de WhatsApp,
+observabilidade e atualização integrada.
 
 ## Assets
 
 | Asset | Indicado para |
 |---|---|
-| `provedorx-bundle-linux-x86_64.tar.gz` | **Instalação/atualização no servidor Linux** |
-| `provedorx-bundle-macos-arm64.tar.gz` | Instalação local/desenvolvimento no macOS |
-| `provedorx-bundle-<plataforma>.tar.gz.sha256` | Verificação de integridade |
-| `provedorx-<binário>-<plataforma>` | Instalação manual de um binário isolado |
-| `latest.json` | Manifesto usado pelo atualizador automático |
+| `provedorx-bundle-linux-x86_64.tar.gz` | Servidor Linux x86_64 |
+| `provedorx-bundle-macos-arm64.tar.gz` | macOS Apple Silicon |
+| `provedorx-bundle-<plataforma>.tar.gz.sha256` | Verificação SHA-256 |
+| `latest.json` | Manifesto usado pelo atualizador |
+| `provedorx-<binário>-<plataforma>` | Binário isolado (instalação manual) |
+
+> Para Linux arm64, gere o bundle localmente com
+> `LINUX_PLATFORM=linux/arm64 ./build.sh linux` (o release oficial publica
+> Linux x86_64 e macOS arm64).
 
 Cada bundle contém:
 
@@ -49,76 +31,287 @@ Cada bundle contém:
 bin/provedorx
 bin/provedorx-worker
 bin/provedorx-bot
+deploy/bootstrap.sh
+deploy/env/*.env.example
+deploy/sql/01-schema.sql
+deploy/sql/02-seed.sql
+deploy/sql/03-bootstrap.sql.tpl
+deploy/systemd/
+deploy/docker-compose.release.yml
+deploy/docker/Dockerfile.runtime
+deploy/vault.hcl
 version.json
 ```
 
-## Instalação completa (bundle)
+Nenhum `.env` com segredos é distribuído.
 
-O bundle inclui os binários e o diretório `deploy/` com exemplos de env, SQL de
-inicialização e o `bootstrap.sh`. Nenhum `.env` com segredos é distribuído.
+---
+
+## Primeira instalação — systemd (Debian/Ubuntu)
+
+Pré-requisitos: Debian 12/Ubuntu 22.04+, acesso root, internet e as portas
+`8000`/`8001` liberadas (ou um proxy na frente).
 
 ```bash
-curl -fL -o provedorx-bundle.tar.gz \
-  https://github.com/Provedorx/provedorx/releases/latest/download/provedorx-bundle-linux-x86_64.tar.gz
-curl -fL -o provedorx-bundle.tar.gz.sha256 \
-  https://github.com/Provedorx/provedorx/releases/latest/download/provedorx-bundle-linux-x86_64.tar.gz.sha256
+BASE="https://github.com/Provedorx/provedorx/releases/latest/download"
 
-sha256sum -c provedorx-bundle.tar.gz.sha256
-mkdir -p /opt/provedorx-release
-tar -xzf provedorx-bundle.tar.gz -C /opt/provedorx-release
+curl -fL -O "$BASE/provedorx-bundle-linux-x86_64.tar.gz"
+curl -fL -O "$BASE/provedorx-bundle-linux-x86_64.tar.gz.sha256"
+sha256sum -c provedorx-bundle-linux-x86_64.tar.gz.sha256
+
+sudo mkdir -p /opt/provedorx-release
+sudo tar -xzf provedorx-bundle-linux-x86_64.tar.gz -C /opt/provedorx-release
 cd /opt/provedorx-release
 
-# Debian/systemd: instala MariaDB, Vault, MinIO, NATS, gera envs e o admin
 sudo ./deploy/bootstrap.sh --mode systemd
+```
 
-# ou Docker Compose
+O bootstrap:
+
+1. instala MariaDB, Vault, MinIO, NATS e dependências;
+2. gera senha do banco, JWT, encryption keys, tokens do bot, credenciais do
+   MinIO e senha do admin;
+3. cria banco/usuário, aplica schema + seed + settings/gateways/admin;
+4. inicializa o Vault com **2 chaves de unseal** (`/etc/provedorx/vault-keys.json`);
+5. grava o segredo do MinIO no Vault;
+6. gera `/etc/provedorx/{common,api,worker,bot}.env`;
+7. instala units systemd, polkit e certificado TLS self-signed;
+8. inicia API, bot, workers e NATS.
+
+No final ele mostra o e-mail e a senha do admin e o caminho das chaves do
+Vault. **Guarde esses dados.**
+
+### Frontend (systemd)
+
+O frontend é um release separado:
+
+```bash
+curl -fL -O https://github.com/Provedorx/provedorx-frontend/releases/latest/download/provedorx-frontend.tar.gz
+sudo mkdir -p /opt/frontend
+sudo tar -xzf provedorx-frontend.tar.gz -C /opt/frontend --strip-components=1
+```
+
+A API serve os arquivos de `/opt/frontend` em `/` e `/assets`.
+
+---
+
+## Primeira instalação — Docker Compose
+
+Pré-requisitos: Docker Engine + Compose v2.24+.
+
+```bash
+BASE="https://github.com/Provedorx/provedorx/releases/latest/download"
+curl -fL -O "$BASE/provedorx-bundle-linux-x86_64.tar.gz"
+curl -fL -O "$BASE/provedorx-bundle-linux-x86_64.tar.gz.sha256"
+sha256sum -c provedorx-bundle-linux-x86_64.tar.gz.sha256
+
+mkdir -p /opt/provedorx-release
+tar -xzf provedorx-bundle-linux-x86_64.tar.gz -C /opt/provedorx-release
+cd /opt/provedorx-release
+
 ./deploy/bootstrap.sh --mode docker
 ```
 
-O bootstrap gera automaticamente:
+O compose sobe MariaDB, NATS, Vault, MinIO, API, workers e bot. Para subir
+apenas a infraestrutura e inicializar banco/Vault/MinIO:
 
-- senha do banco e do usuário da aplicação;
-- JWT/encryption keys e tokens do bot;
-- 2 chaves de unseal do Vault + root token;
-- credenciais do MinIO;
-- usuário admin inicial (a senha é exibida no final).
+```bash
+./deploy/bootstrap.sh --mode docker --infra-only
+```
 
-## Atualização recomendada
+### Frontend (Docker)
 
-Use a própria interface do ProvedorX:
+Extraia o release do front em `frontend/` na raiz do bundle. O compose monta
+esse diretório em `/opt/frontend` no container da API:
+
+```bash
+curl -fL -O https://github.com/Provedorx/provedorx-frontend/releases/latest/download/provedorx-frontend.tar.gz
+mkdir -p frontend
+tar -xzf provedorx-frontend.tar.gz -C frontend --strip-components=1
+```
+
+---
+
+## Já tenho instalação — systemd
+
+> Faça backup do banco e de `/etc/provedorx` antes. **Nunca** rode
+> `bootstrap.sh --reset-db` em produção.
+
+1. Baixe e valide o bundle novo.
+2. Pare os serviços:
+
+```bash
+sudo systemctl stop provedorx-api provedorx-bot 'provedorx-worker@*'
+```
+
+3. Backup:
+
+```bash
+sudo cp -a /opt/provedorx/bin /opt/provedorx/bin.bak-$(date +%F)
+sudo cp -a /etc/provedorx /etc/provedorx.bak-$(date +%F)
+```
+
+4. Instale os binários novos:
+
+```bash
+sudo install -m 0755 bin/provedorx        /opt/provedorx/bin/provedorx
+sudo install -m 0755 bin/provedorx-worker /opt/provedorx/bin/provedorx-worker
+sudo install -m 0755 bin/provedorx-bot    /opt/provedorx/bin/provedorx-bot
+```
+
+5. Compare `deploy/env/*.env.example` com `/etc/provedorx/*.env` e adicione
+   as chaves novas manualmente (`GITHUB_API_REPO`, `GITHUB_FRONT_REPO`,
+   `SYSTEMD_*`, etc.).
+6. Aplique somente **migrations pendentes**. Não reaplique
+   `01-schema.sql`/`02-seed.sql` em banco existente.
+7. Suba os serviços:
+
+```bash
+sudo systemctl start provedorx-nats
+sudo systemctl start provedorx-api
+sudo systemctl start provedorx-bot
+sudo systemctl start 'provedorx-worker@*'
+```
+
+8. Confira `curl -s http://127.0.0.1:8001/health`.
+
+---
+
+## Já tenho instalação — containers no Proxmox/Docker
+
+O release novo entrega binários + `deploy/docker/Dockerfile.runtime`. Para quem
+já tem um container da API rodando:
+
+1. **Backup** do banco (`mariadb-dump`) e dos volumes de uploads/front.
+2. Baixe e valide o bundle novo.
+3. Gere a imagem nova:
+
+```bash
+cd /opt/provedorx-release
+docker build -f deploy/docker/Dockerfile.runtime -t provedorx:<versao> .
+```
+
+4. Recrie **somente a API** com os mesmos envs, rede, portas e volumes do
+   container atual. Com Compose:
+
+```bash
+docker compose up -d --no-deps api
+```
+
+Com `docker run`, inspecione o container atual e repita os mesmos argumentos,
+trocando apenas a imagem:
+
+```bash
+docker inspect <container_api> --format '{{json .Mounts}}'
+docker inspect <container_api> --format '{{json .Config.Env}}'
+```
+
+### Cenário Proxmox: API e front em containers separados
+
+Se o banco, Vault, MinIO e NATS já estão em outras máquinas/containers, use o
+compose de instalação existente (ele **não** cria infraestrutura nem aplica
+schema/seed):
+
+```bash
+cd /opt/provedorx-release
+mkdir -p deploy/env
+cp deploy/env/*.env.example deploy/env/
+```
+
+Edite `deploy/env/common.env` com os valores atuais:
+
+```dotenv
+DATABASE_URL=mysql://usuario:senha@10.60.1.133:3306/isp?charset=utf8mb4
+VAULT_ADDR=http://10.60.1.132:8200
+VAULT_TOKEN=<token atual do Vault>
+NATS_URL=nats://<host-nats>:4222
+ENCRYPTION_KEY=<mesma chave da instalação atual>
+SECRETES_KEY=<mesma chave da instalação atual>
+```
+
+Edite `deploy/env/api.env`:
+
+```dotenv
+JWT_SECRET=<mesmo segredo da instalação atual>
+FRONTEND_DIR=/opt/frontend
+GITHUB_API_REPO=Provedorx/provedorx
+GITHUB_FRONT_REPO=Provedorx/provedorx-frontend
+```
+
+> **Muito importante:** mantenha os mesmos `JWT_SECRET`, `ENCRYPTION_KEY` e
+> `SECRETES_KEY` da instalação atual. Trocar `SECRETES_KEY` impede
+> descriptografar segredos já gravados no banco.
+
+Suba apenas API, workers e bot:
+
+```bash
+docker compose -f deploy/docker-compose.external.yml up -d --build
+```
+
+O front continua no container dele; substitua os arquivos pelo release novo
+(ver README do frontend). Se quiser que a API sirva o front, monte o diretório
+compartilhado em `/opt/frontend`.
+
+O compose externo sobe API, bot e um container por worker (events, billing,
+status, backups, maintenance, notifications, network, fiscal). Ele força
+`API_BACKGROUND_WORKERS=none` para os loops não rodarem duplicados na API. Se
+quiser manter os loops dentro da API durante a transição, remova os serviços
+`worker-*` e use `API_BACKGROUND_WORKERS=legacy`.
+
+5. **Não** rode `./deploy/bootstrap.sh --mode docker` no mesmo host com
+   containers/volumes existentes. Ele cria uma stack e volumes novos; use o
+   bootstrap apenas para instalação limpa ou em outra máquina.
+6. Ajuste o banco:
+
+```sql
+UPDATE provider_settings
+SET github_api_repo = 'Provedorx/provedorx',
+    github_front_repo = 'Provedorx/provedorx-frontend',
+    front_dir = '/opt/frontend'
+WHERE id = 1;
+```
+
+7. Atualize o container/diretório do frontend com o release novo.
+8. Confira `/health` e o rodapé da interface.
+
+> Em Docker, a atualização automática de **binário da API** pela interface não
+> é o caminho recomendado: recrie o container com a imagem nova. A atualização
+> do **frontend** funciona se `/opt/frontend` for um volume gravável e, se o
+> front estiver em outro container, compartilhado entre os dois.
+
+### Banco e migrations
+
+- Instalação nova: o bootstrap aplica schema + seed + bootstrap.
+- Instalação existente: **não** reaplique schema/seed; aplique apenas as
+  migrations pendentes do repositório privado, sempre após backup.
+- Se o release não trouxer migrations novas, não há nada a aplicar além dos
+  binários/envs.
+
+---
+
+## Atualização pela interface
 
 ```text
 Configurações → Atualizações → Verificar / Atualizar API
 ```
 
-O sistema:
+O sistema consulta `latest.json` no GitHub sem usar a API REST, compara SemVer,
+baixa o bundle da plataforma, valida o SHA-256, faz backup, instala API/worker/
+bot atomicamente, reinicia worker/bot e agenda o restart da API. O rollback
+usa `/opt/provedorx/bin/.backups/<versao>`.
 
-- consulta `latest.json` diretamente pelo GitHub (sem API REST e sem rate limit);
-- compara versões com SemVer;
-- baixa o bundle da plataforma correta;
-- valida o SHA-256;
-- faz backup da versão atual;
-- instala API, worker e bot atomicamente;
-- reinicia worker/bot e, por último, a API;
-- permite rollback para versões anteriores.
-
-## Instalação manual (Linux)
+## Instalação manual (somente binários)
 
 ```bash
-VERSION="vX.Y.Z"   # ou use latest/download para a última
 BASE="https://github.com/Provedorx/provedorx/releases/latest/download"
-
-curl -fL -o provedorx-bundle.tar.gz \
-  "$BASE/provedorx-bundle-linux-x86_64.tar.gz"
-curl -fL -o provedorx-bundle.tar.gz.sha256 \
-  "$BASE/provedorx-bundle-linux-x86_64.tar.gz.sha256"
-
-sha256sum -c provedorx-bundle.tar.gz.sha256
+curl -fL -O "$BASE/provedorx-bundle-linux-x86_64.tar.gz"
+curl -fL -O "$BASE/provedorx-bundle-linux-x86_64.tar.gz.sha256"
+sha256sum -c provedorx-bundle-linux-x86_64.tar.gz.sha256
 
 mkdir -p /tmp/provedorx-release
-tar -xzf provedorx-bundle.tar.gz -C /tmp/provedorx-release
+tar -xzf provedorx-bundle-linux-x86_64.tar.gz -C /tmp/provedorx-release
 
-sudo install -m 0755 /tmp/provedorx-release/bin/provedorx       /opt/provedorx/bin/provedorx
+sudo install -m 0755 /tmp/provedorx-release/bin/provedorx        /opt/provedorx/bin/provedorx
 sudo install -m 0755 /tmp/provedorx-release/bin/provedorx-worker /opt/provedorx/bin/provedorx-worker
 sudo install -m 0755 /tmp/provedorx-release/bin/provedorx-bot    /opt/provedorx/bin/provedorx-bot
 
@@ -126,26 +319,13 @@ sudo systemctl restart 'provedorx-worker@*' provedorx-bot
 sudo systemctl restart provedorx-api
 ```
 
-> Ajuste os caminhos e os nomes das units conforme a instalação.
+## Requisitos
 
-## Versões e tags
-
-- Formato: `vMAJOR.MINOR.PATCH` (SemVer).
-- A tag é a fonte de verdade da versão.
-- O binário reporta a versão em `--version` e no `/health`.
-- `latest.json` é regenerado em cada release com:
-  - versão e tag;
-  - commit;
-  - data de build/publicação;
-  - notas de release (commits e contribuidores).
-
-## Requisitos (servidor)
-
-- Linux x86_64 com systemd
+- Linux x86_64/arm64 com systemd, ou Docker Compose
 - MariaDB/MySQL
 - NATS
 - Vault (segredos)
-- MinIO (opcional, para arquivos/backups)
+- MinIO (arquivos/backups)
 - Certificado TLS para HTTPS
 
 ## Links
@@ -155,8 +335,8 @@ sudo systemctl restart provedorx-api
 
 ## Apoie o projeto
 
-O ProvedorX é um projeto independente. O sistema possui uma tela de doação via
-Pix em **Configurações → Atualizações → Apoie o Projeto**.
+O ProvedorX é um projeto independente. Há uma tela de doação via Pix em
+**Configurações → Atualizações → Apoie o Projeto**.
 
 ---
 
